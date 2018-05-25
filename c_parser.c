@@ -143,7 +143,7 @@ ulint process_ibrec(page_t *page, rec_t *rec, table_def_t *table, ulint *offsets
 		ulint len;
 		byte *field = rec_get_nth_field(rec, offsets, i, &len);
 
-		if (table->fields[i].type == FT_INTERNAL){
+		if (table->fields[i].type == FT_INTERNAL) {
 			if (debug) printf("Field #%i @ %p: length %lu, value: ", i, field, len);
 			print_field_value(field, len, &(table->fields[i]));
 			if (i < table->fields_count - 1) fprintf(f_result, "\t");
@@ -174,10 +174,10 @@ ulint process_ibrec(page_t *page, rec_t *rec, table_def_t *table, ulint *offsets
 		} else {
             if (rec_offs_nth_extern(offsets, i)) {
                 print_field_value_with_external(field, len, &(table->fields[i]));
-                } else {
-			        print_field_value(field, len, &(table->fields[i]));
-                    }
-		    }
+            } else {
+			      print_field_value(field, len, &(table->fields[i]));
+            }
+		}
 
 		if (i < table->fields_count - 1) fprintf(f_result, "\t");
 		if (debug) printf("\n");
@@ -205,27 +205,32 @@ inline ibool check_constraints(rec_t *rec, table_def_t* table, ulint* offsets) {
 
         if (len != UNIV_SQL_NULL) {
             len_sum += len;
-            }
-        else {
+        } else {
             if (!rec_offs_comp(offsets)) {
                 len_sum += rec_get_nth_field_size(rec, i);
-                }
             }
+        }
 
 
 		// Skip null fields from type checks and fail if null is not allowed by data limits
 		if (len == UNIV_SQL_NULL) {
 			if (table->fields[i].has_limits && !table->fields[i].limits.can_be_null) {
-				if (debug) printf("data can't be NULL");
+				if (debug) {
+                    printf("data can't be NULL");
+                }
 				return FALSE;
 			}
 			continue;
 		}
 
 		// Check limits
-		if (!table->fields[i].has_limits) continue;
+		if (!table->fields[i].has_limits) {
+            continue;
+        }
 		if (!check_field_limits(&(table->fields[i]), field, len)) {
-			if (debug) printf("LIMITS check failed(field = %p, len = %ld)!\n", field, len);
+			if (debug) {
+                printf("LIMITS check failed(field = %p, len = %ld)!\n", field, len);
+            }
 			return FALSE;
 		}
 	}
@@ -241,7 +246,9 @@ inline ibool check_constraints(rec_t *rec, table_def_t* table, ulint* offsets) {
             }
     */
 
-	if (debug) printf("\nRow looks OK!\n");
+	if (debug) {
+        printf("\nRow looks OK!\n");
+    }
 	return TRUE;
 }
 
@@ -266,44 +273,65 @@ inline ibool check_fields_sizes(rec_t *rec, table_def_t *table, ulint *offsets) 
 	for(i = 0; i < table->fields_count; i++) {
 		// Get field size
 		ulint len = rec_offs_nth_size(offsets, i);
-		if (debug) printf("\n - field %s(%lu):", table->fields[i].name, len);
-
+		if (debug) {
+            printf("\n - field %s(%lu):", table->fields[i].name, len);
+        }
 		// If field is null
 		if (len == UNIV_SQL_NULL) {
 			// Check if it can be null and jump to a next field if it is OK
-			if (table->fields[i].can_be_null) continue;
+			if (table->fields[i].can_be_null) {
+                continue;
+            }
 			// Invalid record where non-nullable field is NULL
-			if (debug) printf("Can't be NULL or zero-length!\n");
-			return FALSE;
+			if (debug) {
+                printf("Can't be NULL or zero-length!\n");
+            }
+            return FALSE;
 		}
 
 		// Check size of fixed-length field
 		if (table->fields[i].fixed_length) {
 			// Check if size is the same and jump to the next field if it is OK
-			if (len == table->fields[i].fixed_length || (len == 0 && table->fields[i].can_be_null)) continue;
+			if (len == table->fields[i].fixed_length || (len == 0 && table->fields[i].can_be_null)) {
+                continue;
+            }
 			// Invalid fixed length field
-			if (debug) printf("Invalid fixed length field size: %lu, but should be %u!\n", len, table->fields[i].fixed_length);
-			return FALSE;
+			if (debug) {
+                printf("Invalid fixed length field size: %lu, but should be %u!\n", len, table->fields[i].fixed_length);
+            }
+            return FALSE;
 		}
 
 		// Check if has externally stored data
 		if (rec_offs_nth_extern(offsets, i)) {
-			if (debug) printf("\nEXTERNALLY STORED VALUE FOUND in field %i\n", i);
-			if (table->fields[i].type == FT_TEXT || table->fields[i].type == FT_BLOB) continue;
-			if (debug) printf("Invalid external data flag!\n");
+			if (debug) {
+                printf("\nEXTERNALLY STORED VALUE FOUND in field %i\n", i);
+            }
+            if (table->fields[i].type == FT_TEXT || table->fields[i].type == FT_BLOB) {
+                continue;
+            }
+			if (debug) {
+                printf("Invalid external data flag!\n");
+            }
 			return FALSE;
 		}
 
 		// Check size limits for varlen fields
 		if (len < table->fields[i].min_length || len > table->fields[i].max_length) {
-			if (debug) printf("Length limits check failed (%lu < %u || %lu > %u)!\n", len, table->fields[i].min_length, len, table->fields[i].max_length);
+			if (debug) {
+                printf("Length limits check failed (%lu < %u || %lu > %u)!\n", len, table->fields[i].min_length, len, table->fields[i].max_length);
+            }
 			return FALSE;
 		}
 
-		if (debug) printf("OK!");
+		if (debug) {
+            printf("OK!");
+        }
 	}
 
-	if (debug) printf("\n");
+	if (debug) {
+        printf("\n");
+    }
 	return TRUE;
 }
 
@@ -317,8 +345,9 @@ inline ibool ibrec_init_offsets_new(page_t *page, rec_t* rec, table_def_t* table
 	ulint status = rec_get_status(rec);
 
 	// Skip non-ordinary records
-	if (status != REC_STATUS_ORDINARY) return FALSE;
-
+	if (status != REC_STATUS_ORDINARY) {
+        return FALSE;
+    }
 	// First field is 0 bytes from origin point
 	rec_offs_base(offsets)[0] = 0;
 
@@ -384,7 +413,9 @@ inline ibool ibrec_init_offsets_new(page_t *page, rec_t* rec, table_def_t* table
 	resolved:
         offs &= 0xffff;
 		if (rec + offs - page > UNIV_PAGE_SIZE) {
-			if (debug) printf("Invalid offset for field %lu: %lu\n", i, offs);
+			if (debug) {
+                printf("Invalid offset for field %lu: %lu\n", i, offs);
+            }
 			return FALSE;
 		}
 		rec_offs_base(offsets)[i + 1] = len;
@@ -461,45 +492,70 @@ inline ibool check_for_a_record(page_t *page, rec_t *rec, table_def_t *table, ul
 
 	// Check if given origin is valid
 	offset = rec - page;
-	if (offset < record_extra_bytes + table->min_rec_header_len) return FALSE;
-	if (debug) printf("ORIGIN=OK ");
+	if (offset < record_extra_bytes + table->min_rec_header_len) {
+        return FALSE;
+    }
+	if (debug) {
+        printf("ORIGIN=OK ");
+    }
 
     flag = rec_get_deleted_flag(rec, page_is_comp(page));
-    if (debug) printf("DELETED=0x%X ", flag);
+    
+    if (debug) {
+        printf("DELETED=0x%X ", flag);
+    }
 	// Skip non-deleted records
-	if (deleted_records_only && flag == 0) return FALSE;
+	if (deleted_records_only && flag == 0) {
+        return FALSE;
+    }
 
 	// Skip deleted records
-	if (undeleted_records_only && flag != 0) return FALSE;
+	if (undeleted_records_only && flag != 0) {
+        return FALSE;
+    }
 
     // Get field offsets for current table
 	int comp = page_is_comp(page);
-	if (comp && !ibrec_init_offsets_new(page, rec, table, offsets)) return FALSE;
-	if (!comp && !ibrec_init_offsets_old(page, rec, table, offsets)) return FALSE;
-	if (debug) printf("OFFSETS=OK ");
+	if (comp && !ibrec_init_offsets_new(page, rec, table, offsets)) {
+        return FALSE;
+    }
+	if (!comp && !ibrec_init_offsets_old(page, rec, table, offsets)) {
+        return FALSE;
+    }
+	if (debug) {
+        printf("OFFSETS=OK ");
+    }
 
 	// Check the record's data size
 	data_size = rec_offs_data_size(offsets);
 	if (data_size > table->data_max_size) {
-        if (debug) printf("DATA_SIZE=FAIL(%lu > %ld) ", (long int)data_size, (long int)table->data_max_size);
+        if (debug) {
+            printf("DATA_SIZE=FAIL(%lu > %ld) ", (long int)data_size, (long int)table->data_max_size);
+        }
         return FALSE;
 	}
 	if (data_size < table->data_min_size) {
-        if (debug) printf("DATA_SIZE=FAIL(%lu < %lu) ", (long int)data_size, (long int)table->data_min_size);
+        if (debug) {
+            printf("DATA_SIZE=FAIL(%lu < %lu) ", (long int)data_size, (long int)table->data_min_size);
+        }
         return FALSE;
 	}
-	if (debug) printf("DATA_SIZE=OK ");
-
+	if (debug) {
+        printf("DATA_SIZE=OK ");
+    }
 	// Check fields sizes
-	if (!check_fields_sizes(rec, table, offsets)) return FALSE;
-	if (debug) printf("FIELD_SIZES=OK ");
-
+	if (!check_fields_sizes(rec, table, offsets)) {
+        return FALSE;
+    }
+	if (debug) {
+        printf("FIELD_SIZES=OK ");
+    }
 	// This record could be valid and useful for us
 	return TRUE;
 }
 
 /*******************************************************************/
-int check_page(page_t *page, unsigned int *n_records){
+int check_page(page_t *page, unsigned int *n_records) {
     int comp = page_is_comp(page);
     int16_t i, s, p, b, p_prev;
     int recs = 0;
@@ -508,53 +564,67 @@ int check_page(page_t *page, unsigned int *n_records){
     i = (comp) ? PAGE_NEW_INFIMUM : PAGE_OLD_INFIMUM;
     s = (comp) ? PAGE_NEW_SUPREMUM : PAGE_OLD_SUPREMUM;
 
-	if(deleted_records_only == 1){
-		if (debug) printf("We look for deleted records only. Consider all pages are not valid\n");
+	if(deleted_records_only == 1) {
+		if (debug) {
+            printf("We look for deleted records only. Consider all pages are not valid\n");
+        }
 		return 0;
-		}
-    if (debug) printf("Checking a page\nInfimum offset: 0x%X\nSupremum offset: 0x%X\n", i, s);
+	}
+    if (debug) {
+        printf("Checking a page\nInfimum offset: 0x%X\nSupremum offset: 0x%X\n", i, s);
+    }
     p_prev = 0;
     p = i;
-    while(p != s){
-        if(recs > max_recs){
+    while (p != s) {
+        if (recs > max_recs) {
             *n_records = 0;
-            if (debug) printf("Page is bad\n");
-            return 0;
+            if (debug) {
+                printf("Page is bad\n");
             }
+            return 0;
+        }
         // If a pointer to the next record is negative - the page is bad
-        if(p < 2){
+        if (p < 2) {
             *n_records = 0;
-            if (debug) printf("Page is bad\n");
-            return 0;
+            if (debug) {
+                printf("Page is bad\n");
             }
+            return 0;
+        }
 	// If the pointer is bigger than UNIV_PAGE_SIZE, the page is corrupted
-        if(p > UNIV_PAGE_SIZE){
+        if (p > UNIV_PAGE_SIZE) {
             *n_records = 0;
-            if (debug) printf("Page is bad\n");
-            return 0;
+            if (debug) {
+                printf("Page is bad\n");
             }
+            return 0;
+        }
 	//  If we've already was here, the page is bad
-        if(p == p_prev){
+        if (p == p_prev) {
             *n_records = 0;
             if (debug) printf("Page is bad\n");
             return 0;
-            }
-	p_prev = p;
+        }
+	    p_prev = p;
         // Get next pointer
-        if(comp){
+        if (comp) {
             b = mach_read_from_2(page + p - 2);
             p = p + b;
-            }
-        else{
+        } else {
             p =  mach_read_from_2(page + p - 2);
-            }
-        if (debug) printf("Next record at offset: 0x%X (%d) \n", 0x0000FFFF & p, p);
-        recs++;
         }
-    *n_records = recs -1; // - infinum record
-    if (debug) printf("Page is good\n");
-    return 1;
+        if (debug) {
+            printf("Next record at offset: 0x%X (%d) \n", 0x0000FFFF & p, p);
+        }
+
+        recs++;
     }
+    *n_records = recs -1; // - infinum record
+    if (debug) {
+        printf("Page is good\n");
+    }
+    return 1;
+}
 /*******************************************************************/
 void process_ibpage(page_t *page) {
     ulint page_id;
@@ -585,10 +655,10 @@ void process_ibpage(page_t *page) {
 	if (debug) printf("Page id: %lu\n", page_id);
 	fprintf(f_result, "-- Page id: %lu", page_id);
 
-	if(table_definitions_cnt == 0){
-		fprintf(stderr, "There are no table definitions. Please check  include/table_defs.h\n");
+	if (table_definitions_cnt == 0) {
+	    fprintf(stderr, "There are no table definitions. Please check  include/table_defs.h\n");
 		exit(EXIT_FAILURE);
-		}
+	}
     is_page_valid = check_page(page, &expected_records);
 
     // comp == 1 if page in COMPACT format and 0 if REDUNDANT
@@ -597,62 +667,68 @@ void process_ibpage(page_t *page) {
     infimum = (comp) ? PAGE_NEW_INFIMUM : PAGE_OLD_INFIMUM;
     supremum = (comp) ? PAGE_NEW_SUPREMUM : PAGE_OLD_SUPREMUM;
 	// Find possible data area start point (at least 5 bytes of utility data)
-	if(is_page_valid){
+	if (is_page_valid) {
         b = mach_read_from_2(page + infimum - 2);
         offset = (comp) ? infimum + b : b;
-        }
-    else{
+    } else {
         offset = 100 + record_extra_bytes;
-        }
+    }
     	fprintf(f_result, ", Records list: %s", is_page_valid? "Valid": "Invalid");
         expected_records_inheader = mach_read_from_2(page + PAGE_HEADER + PAGE_N_RECS);
     	fprintf(f_result, ", Expected records: (%u %u)", expected_records, expected_records_inheader);
     	fprintf(f_result, "\n");
-	if (debug) printf("Starting offset: %lu (%lX). Checking %d table definitions.\n", offset, offset, table_definitions_cnt);
-
+	if (debug) {
+        printf("Starting offset: %lu (%lX). Checking %d table definitions.\n", offset, offset, table_definitions_cnt);
+    }
 	// Walk through all possible positions to the end of page
 	// (start of directory - extra bytes of the last rec)
     //is_page_valid = 0;
 	while (offset < UNIV_PAGE_SIZE - record_extra_bytes && ( (offset != supremum ) || !is_page_valid) ) {
 		// Get record pointer
 		origin = page + offset;
-		if (debug) printf("\nChecking offset: 0x%lX: ", offset);
+		if (debug) {
+            printf("\nChecking offset: 0x%lX: ", offset);
+        }
 
 		// Check all tables
 		for (i = 0; i < table_definitions_cnt; i++) {
 			// Get table info
 			table_def_t *table = &(table_definitions[i]);
-			if (debug) printf(" (%s) ", table->name);
-
+			if (debug) {
+                printf(" (%s) ", table->name);
+            }
 			// Check if origin points to a valid record
 			if (check_for_a_record(page, origin, table, offsets) && check_constraints(origin, table, offsets)) {
 				actual_records++;
-				if (debug) printf("\n---------------------------------------------------\n"
+				if (debug) {
+                    printf("\n---------------------------------------------------\n"
 			       			  "PAGE%lu: Found a table %s record: %p (offset = %lu)\n", \
 						  page_id, table->name, origin, offset);
-                		if(is_page_valid){
+                }
+                if (is_page_valid) {
 					process_ibrec(page, origin, table, offsets);
-                    			b = mach_read_from_2(page + offset - 2);
+                    b = mach_read_from_2(page + offset - 2);
 					offset = (comp) ? offset + b : b;
-                    			}
-				else{
+                } else {
 					offset += process_ibrec(page, origin, table, offsets);
-                    			}
-                		if (debug) printf("Next offset: 0x%lX", offset);
-			   		break;
-		        	}
-            		else{
-                		if(is_page_valid){
+                }
+                if (debug) {
+                    printf("Next offset: 0x%lX", offset);
+                }
+                break;
+		    } else {
+                if (is_page_valid) {
 					b = mach_read_from_2(page + offset - 2);
 					offset = (comp) ? offset + b : b;
-                    			}
-				else{
+                } else {
 					offset++;
-					}
-                		if (debug) printf("\nNext offset: %lX", offset);
-               			}
-			}
+				}
+                if (debug) {
+                    printf("\nNext offset: %lX", offset);
+                }
+            }
 		}
+	}
 	fflush(f_result);
 	int leaf_page = mach_read_from_2(page + PAGE_HEADER + PAGE_LEVEL) == 0;
 	int lost_records = (actual_records != expected_records) && (actual_records != expected_records_inheader);
@@ -668,7 +744,6 @@ void process_ibpage(page_t *page) {
 	        records_lost = 1;
 	    }
 	}
-
 }
 
 /*******************************************************************/
@@ -711,7 +786,6 @@ void process_ibfile(int fn) {
 
 	}
 	free(page);
-
 }
 
 /*******************************************************************/
@@ -720,17 +794,18 @@ int open_ibfile(char *fname) {
 	int fn;
 
 	// Skip non-regular files
-	if (debug) printf("Opening file: %s\n", fname);
-	if (stat(fname, &fstat) != 0 || (fstat.st_mode & S_IFREG) != S_IFREG){
+	if (debug) {
+        printf("Opening file: %s\n", fname);
+    }
+	if (stat(fname, &fstat) != 0 || (fstat.st_mode & S_IFREG) != S_IFREG) {
         fprintf(stderr, "Invalid file specified!");
         exit(EXIT_FAILURE);
-        }
+    }
 	fn = open(fname, O_RDONLY, 0);
 	if (!fn) {
         fprintf(stderr, "Can't open file!");
         exit(EXIT_FAILURE);
-        }
-
+    }
 	return fn;
 }
 
@@ -740,7 +815,7 @@ void set_filter_id(char *id) {
     if (cnt < 2) {
         fprintf(stderr, "Invalid index id provided! It should be in N:M format, where N and M are unsigned integers");
         exit(EXIT_FAILURE);
-        }
+    }
     use_filter_id = 1;
 }
 
@@ -802,7 +877,7 @@ int main(int argc, char **argv) {
 				if(NULL == (f_result = fopen(result_file, "w"))){
 					fprintf(stderr, "Can't open file %s for writing\n", result_file);
 					exit(-1);
-					}
+				}
 				break;
 			case 'i':
 				strncpy(path_ibdata, optarg, sizeof(path_ibdata));
@@ -823,13 +898,12 @@ int main(int argc, char **argv) {
 				if(stat(src, &st) == 0){
 					if(S_ISDIR(st.st_mode)){
 						is_dir = 1;
-						}
 					}
-				else{
+				} else {
 					perror("stat");
 					fprintf(stderr, "Can't stat %s\n", src);
 					exit(-1);
-					}
+				}
 				break;
 			case 'V':
 				debug = 1;
@@ -859,59 +933,64 @@ int main(int argc, char **argv) {
         usage();
     }
 
-    if(load_table(table_schema) != 0){
+    if(load_table(table_schema) != 0) {
         fprintf(stderr, "Failed to parse table structure\n");
         usage();
         exit(EXIT_FAILURE);
     }
 
-	if(is_dir){
+	if (is_dir) {
 		DIR *src_dir;
 		char src_file[256];
 		struct dirent *de;
 		src_dir = opendir(src);
-		while(NULL != (de = readdir(src_dir))){
+		while (NULL != (de = readdir(src_dir))) {
 			if(!strncmp(de->d_name, ".", sizeof(de->d_name))) continue;
 			if(!strncmp(de->d_name, "..", sizeof(de->d_name))) continue;
             snprintf(src_file, sizeof(src_file), "%s/%s", src, de->d_name);
-			if(debug) { fprintf(stderr, "Processing %s\n", src_file); }
+			if(debug) {
+                fprintf(stderr, "Processing %s\n", src_file);
+            }
 			if(0 == (fn = open_ibfile(src_file))){
 				fprintf(stderr, "Can't open %s\n", src_file);
 				perror("open_ibfile");
 				exit(-1);
-				}
+			}
 			process_ibfile(fn);
 			close(fn);
-			}
-		closedir(src_dir);
 		}
-	else{
-		if(0 == (fn = open_ibfile(src))){
+
+		closedir(src_dir);
+	} else {
+		if(0 == (fn = open_ibfile(src))) {
 			fprintf(stderr, "Can't open %s\n", src);
 			perror("open_ibfile");
 			exit(-1);
-			}
+		}
 		process_ibfile(fn);
 		close(fn);
-		}
+	}
 	table_def_t *table = &(table_definitions[0]);
 	fprintf(f_sql, "SET FOREIGN_KEY_CHECKS=0;\n");
 	fprintf(f_sql, "LOAD DATA LOCAL INFILE '");
-	if(f_result == stdout){
+	if (f_result == stdout) {
 		fprintf(f_sql, "%s/dumps/%s/%s", getenv("PWD"), dump_prefix, table->name);
-		}
-	else{
+	} else {
 		fprintf(f_sql, "%s", result_file);
-		}
+	}
 	fprintf(f_sql, "' REPLACE INTO TABLE `%s` FIELDS TERMINATED BY '\\t' OPTIONALLY ENCLOSED BY '\"' LINES STARTING BY '%s\\t' ", table->name, table->name);
 	int i = 0;
 	int comma = 0;
 	int has_set = 0;
 	fprintf(f_sql, "(");
 	for(i = 0; i < table->fields_count; i++) {
-		if(table->fields[i].type == FT_INTERNAL) continue;
-		if(comma) fprintf(f_sql, ", ");
-		switch(table->fields[i].type){
+		if(table->fields[i].type == FT_INTERNAL) {
+            continue;
+        }
+		if(comma) {
+            fprintf(f_sql, ", ");
+        }
+		switch (table->fields[i].type) {
 			case FT_BLOB:
 			case FT_BIN:
 				fprintf(f_sql, "@var_%s", table->fields[i].name);
@@ -923,32 +1002,37 @@ int main(int argc, char **argv) {
 				break;
 			default:
 				fprintf(f_sql, "`%s`", table->fields[i].name);
-			}
-		comma = 1;
 		}
+		comma = 1;
+	}
 	fprintf(f_sql, ")");
 	comma = 0;
-	if(has_set){
+	if (has_set) {
 		fprintf(f_sql, "\nSET\n");
 		for(i = 0; i < table->fields_count; i++) {
 			if(table->fields[i].type == FT_INTERNAL) continue;
 			switch(table->fields[i].type){
 				case FT_BLOB:
 				case FT_BIN:
-					if(comma) fprintf(f_sql, ",\n");
+					if(comma) {
+                        fprintf(f_sql, ",\n");
+                    }
 					fprintf(f_sql, "    %s = UNHEX(@var_%s)", table->fields[i].name, table->fields[i].name);
 					comma = 1;
 					break;
 				case FT_BIT:
-					if(comma) fprintf(f_sql, ",\n");
+					if(comma) {
+                        fprintf(f_sql, ",\n");
+                    }
 					fprintf(f_sql, "    %s = CAST(@var_%s AS UNSIGNED)", table->fields[i].name, table->fields[i].name);
 					comma = 1;
 					break;
 				default: break;
-				}
 			}
 		}
-	fprintf(f_sql, ";\n");
+	}
+
+    fprintf(f_sql, ";\n");
 	fprintf(f_sql, "-- STATUS {\"records_expected\": %lu, \"records_dumped\": %lu, \"records_lost\": %s} STATUS END\n",
 	records_expected_total, records_dumped_total, records_lost ? "true": "false");
 
