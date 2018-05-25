@@ -563,13 +563,17 @@ int check_page(page_t *page, unsigned int *n_records) {
     *n_records = 0;
     i = (comp) ? PAGE_NEW_INFIMUM : PAGE_OLD_INFIMUM;
     s = (comp) ? PAGE_NEW_SUPREMUM : PAGE_OLD_SUPREMUM;
-
+/**originaly, we scan all the records from the offset (100 + 5 / 6) to find deleted records,
+ * which may get in trouble in the real test.
+ * And now, we do it in another way.
+ * with deleted_records_only == 1, we still check if the page is valid.
 	if(deleted_records_only == 1) {
 		if (debug) {
             printf("We look for deleted records only. Consider all pages are not valid\n");
         }
 		return 0;
 	}
+**/
     if (debug) {
         printf("Checking a page\nInfimum offset: 0x%X\nSupremum offset: 0x%X\n", i, s);
     }
@@ -636,7 +640,7 @@ void process_ibpage(page_t *page) {
     unsigned int expected_records = 0;
     unsigned int expected_records_inheader = 0;
     unsigned int actual_records = 0;
-    int16_t b, infimum, supremum;
+    int16_t infimum, supremum, b = 1;
 
 	// Skip tables if filter used
     if (use_filter_id) {
@@ -666,11 +670,21 @@ void process_ibpage(page_t *page) {
     fprintf(f_result, ", Format: %s", (comp ) ? "COMPACT": "REDUNDANT");
     infimum = (comp) ? PAGE_NEW_INFIMUM : PAGE_OLD_INFIMUM;
     supremum = (comp) ? PAGE_NEW_SUPREMUM : PAGE_OLD_SUPREMUM;
-	// Find possible data area start point (at least 5 bytes of utility data)
-	if (is_page_valid) {
+	
+    /**if undeleted_records_only, we scan the records from the infimum's next
+     * record offset;
+     * if deleted_records_only, we scan the records from the PAGE_FREE pointer.
+     * if you want to recover the last (or more) deleted records,
+     * you must make sure that the you didn't insert anything after you have deleted
+     * something.
+     * */
+	if (is_page_valid && undeleted_records_only == 1) {
         b = mach_read_from_2(page + infimum - 2);
         offset = (comp) ? infimum + b : b;
+    } else if (is_page_valid && deleted_records_only == 1) {
+        offset = page_header_get_field(page, PAGE_FREE);
     } else {
+    // Find possible data area start point (at least 5 bytes of utility data)
         offset = 100 + record_extra_bytes;
     }
     	fprintf(f_result, ", Records list: %s", is_page_valid? "Valid": "Invalid");
@@ -683,7 +697,7 @@ void process_ibpage(page_t *page) {
 	// Walk through all possible positions to the end of page
 	// (start of directory - extra bytes of the last rec)
     //is_page_valid = 0;
-	while (offset < UNIV_PAGE_SIZE - record_extra_bytes && ( (offset != supremum ) || !is_page_valid) ) {
+	while (offset < UNIV_PAGE_SIZE - record_extra_bytes && (b != 0) && ( (offset != supremum ) || !is_page_valid) ) {
 		// Get record pointer
 		origin = page + offset;
 		if (debug) {
@@ -829,18 +843,18 @@ void usage() {
 	  "    -o <file> -- Save dump in this file. Otherwise print to stdout\n"
 	  "    -l <file> -- Save SQL statements in this file. Otherwise print to stderr\n"
 	  "    -h  -- Print this help\n"
-	  "    -d  -- Process only those pages which potentially could have deleted records (default = NO)\n"
+   // "    -d  -- Process only those pages which potentially could have deleted records (default = NO)\n"
 	  "    -D  -- Recover deleted rows only (default = NO)\n"
 	  "    -U  -- Recover UNdeleted rows only (default = YES)\n"
 	  "    -V  -- Verbose mode (lots of debug information)\n"
-	  "    -4  -- innodb_datafile is in REDUNDANT format\n"
+  //  "    -4  -- innodb_datafile is in REDUNDANT format\n"
 	  "    -5  -- innodb_datafile is in COMPACT format\n"
-	  "    -6  -- innodb_datafile is in MySQL 5.6 format\n"
-	  "    c_parser can detect REDUNDANT or COMPACT, so -4 and -5 are optional. If you use MySQL 5.6+ however, -6 is necessary\n"
-	  "    -T  -- retrieves only pages with index id = NM (N - high word, M - low word of id)\n"
-	  "    -b <dir> -- Directory where external pages can be found. Usually it is pages-XXX/FIL_PAGE_TYPE_BLOB/\n"
-	  "    -i <file> -- Read external pages at their offsets from <file>.\n"
-	  "    -p prefix -- Use prefix for a directory name in LOAD DATA INFILE command\n"
+  //  "    -6  -- innodb_datafile is in MySQL 5.6 format\n"
+  //  "    c_parser can detect REDUNDANT or COMPACT, so -4 and -5 are optional. If you use MySQL 5.6+ however, -6 is necessary\n"
+  //  "    -T  -- retrieves only pages with index id = NM (N - high word, M - low word of id)\n"
+  //  "    -b <dir> -- Directory where external pages can be found. Usually it is pages-XXX/FIL_PAGE_TYPE_BLOB/\n"
+  //  "    -i <file> -- Read external pages at their offsets from <file>.\n"
+  //  "    -p prefix -- Use prefix for a directory name in LOAD DATA INFILE command\n"
 	  "\n"
 	);
 }
@@ -870,6 +884,7 @@ int main(int argc, char **argv) {
 			    undeleted_records_only = 0;
 				break;
 			case 'U':
+                deleted_records_only = 0;
 			    undeleted_records_only = 1;
 				break;
 			case 'o':
