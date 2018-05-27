@@ -76,6 +76,7 @@
 bool deleted_pages_only = 0;
 bool deleted_records_only = 0;
 bool undeleted_records_only = 1;
+bool brute_force = 0;
 bool debug = 0;
 //bool process_redundant = 0;
 //bool process_compact = 0;
@@ -144,11 +145,19 @@ ulint process_ibrec(page_t *page, rec_t *rec, table_def_t *table, ulint *offsets
 		byte *field = rec_get_nth_field(rec, offsets, i, &len);
 
 		if (table->fields[i].type == FT_INTERNAL) {
-			if (debug) printf("Field #%i @ %p: length %lu, value: ", i, field, len);
+			if (debug) {
+                printf("Field #%i @ %p: length %lu, value: ", i, field, len);
+            }
+
 			print_field_value(field, len, &(table->fields[i]));
-			if (i < table->fields_count - 1) fprintf(f_result, "\t");
-			if (debug) printf("\n");
-			}
+			
+            if (i < table->fields_count - 1) {
+                fprintf(f_result, "\t");
+            }
+			if (debug) {
+                printf("\n");
+            }
+		}
 	}
 
 	// Print table name
@@ -574,6 +583,12 @@ int check_page(page_t *page, unsigned int *n_records) {
 		return 0;
 	}
 **/
+	if(brute_force == 1) {
+		if (debug) {
+            printf("Scan from the first record(brute force), Consider all pages are not valid\n");
+        }
+		return 0;
+	}
     if (debug) {
         printf("Checking a page\nInfimum offset: 0x%X\nSupremum offset: 0x%X\n", i, s);
     }
@@ -630,6 +645,25 @@ int check_page(page_t *page, unsigned int *n_records) {
     return 1;
 }
 /*******************************************************************/
+unsigned int variable_lengthlist_len(table_def_t* table) {
+    unsigned int count = 0;
+    int i = 0;
+    while (i < table->fields_count) {
+      if(!table->fields[i].can_be_null && table->fields[i].fixed_length == 0) {
+          // the following if statement may be a bug in some condition
+          // can not find the best way right now
+          // because can not get the actural length of any nonfixed length
+          if (table->fields[i].max_length > 255 && table->fields[i].min_length > 127) {
+              count += 2;
+          } else {
+            ++count;
+          }
+      }
+      i++;
+    }
+    return count;
+}
+
 void process_ibpage(page_t *page) {
     ulint page_id;
 	rec_t *origin;
@@ -641,6 +675,9 @@ void process_ibpage(page_t *page) {
     unsigned int expected_records_inheader = 0;
     unsigned int actual_records = 0;
     int16_t infimum, supremum, b = 1;
+    int null_columns = 0;
+    int count_zero_b;
+    unsigned int variable_length = 0, prefix_header_length = 0;
 
 	// Skip tables if filter used
     if (use_filter_id) {
@@ -685,7 +722,20 @@ void process_ibpage(page_t *page) {
         offset = page_header_get_field(page, PAGE_FREE);
     } else {
     // Find possible data area start point (at least 5 bytes of utility data)
-        offset = 100 + record_extra_bytes;
+    // (the original offset is proved to be wrong in real test in COMPACT FORMAT)
+        // just process one table at the same time
+        if (table_definitions_cnt == 0) {
+            if (debug) {
+              printf("no table found and table_definitions_cnt ==0\n");
+            }
+            exit(-1);
+        } 
+        table_def_t *table = &(table_definitions[0]);
+        null_columns = table->n_nullable; 
+        variable_length = variable_lengthlist_len(table);
+        prefix_header_length = variable_length + (null_columns + 8 - 1) / 8;
+        offset = 120 + record_extra_bytes + prefix_header_length;
+
     }
     	fprintf(f_result, ", Records list: %s", is_page_valid? "Valid": "Invalid");
         expected_records_inheader = mach_read_from_2(page + PAGE_HEADER + PAGE_N_RECS);
@@ -697,7 +747,9 @@ void process_ibpage(page_t *page) {
 	// Walk through all possible positions to the end of page
 	// (start of directory - extra bytes of the last rec)
     //is_page_valid = 0;
-	while (offset < UNIV_PAGE_SIZE - record_extra_bytes && (b != 0) && ( (offset != supremum ) || !is_page_valid) ) {
+	while (offset < UNIV_PAGE_SIZE - record_extra_bytes 
+            && ((is_page_valid && b != 0) || (!is_page_valid && count_zero_b < 2)) 
+            && ((offset != supremum ) || !is_page_valid)) {
 		// Get record pointer
 		origin = page + offset;
 		if (debug) {
@@ -724,7 +776,18 @@ void process_ibpage(page_t *page) {
                     b = mach_read_from_2(page + offset - 2);
 					offset = (comp) ? offset + b : b;
                 } else {
-					offset += process_ibrec(page, origin, table, offsets);
+                    // if b equals to 0 for more than one time, it's the end of
+                    // the data field;
+                    b = mach_read_from_2(page + offset - 2);
+                    if (b == 0) {
+                      count_zero_b++;
+                    }
+					
+                    offset += process_ibrec(page, origin, table, offsets); //plus data_size
+                    // plus next record's variable_list length & header length
+                    // may be a bug in some condition
+                    // TODO how to fix this potential bug
+                    offset += (record_extra_bytes + prefix_header_length);  
                 }
                 if (debug) {
                     printf("Next offset: 0x%lX", offset);
@@ -846,7 +909,7 @@ void usage() {
    // "    -d  -- Process only those pages which potentially could have deleted records (default = NO)\n"
 	  "    -D  -- Recover deleted rows only (default = NO)\n"
 	  "    -U  -- Recover UNdeleted rows only (default = YES)\n"
-	  "    -V  -- Verbose mode (lots of debug information)\n"
+  //  "    -V  -- Verbose mode (lots of debug information)\n"
   //  "    -4  -- innodb_datafile is in REDUNDANT format\n"
 	  "    -5  -- innodb_datafile is in COMPACT format\n"
   //  "    -6  -- innodb_datafile is in MySQL 5.6 format\n"
@@ -874,7 +937,7 @@ int main(int argc, char **argv) {
 	f_sql = stderr;
 	char result_file[1024];
 	char sql_file[1024];
-	while ((ch = getopt(argc, argv, "t:456hdDUVf:T:b:p:o:i:l:")) != -1) {
+	while ((ch = getopt(argc, argv, "t:456hdADUVf:T:b:p:o:i:l:")) != -1) {
 		switch (ch) {
 			case 'd':
 				deleted_pages_only = 1;
@@ -887,6 +950,11 @@ int main(int argc, char **argv) {
                 deleted_records_only = 0;
 			    undeleted_records_only = 1;
 				break;
+            case 'A':
+                deleted_records_only = 0;
+                undeleted_records_only = 0;
+                brute_force = 1;
+                break;
 			case 'o':
 				strncpy(result_file, optarg, sizeof(result_file));
 				if(NULL == (f_result = fopen(result_file, "w"))){
