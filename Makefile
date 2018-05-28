@@ -4,6 +4,7 @@ SRCS = stream_parser.c include/mysql_def.h c_parser.c
 INC_PATH = -I./include
 LIBS = -pthread -lm
 BINDIR = ./bin
+OUTPUT = ./output
 
 CC ?= gcc
 INSTALL ?=install
@@ -18,6 +19,15 @@ CFLAGS += -DCentOS5
 endif
 
 all: $(TARGETS)
+		rm -rf $(OUTPUT)
+		mkdir -p $(OUTPUT)/bin
+		mv $(TARGETS) $(OUTPUT)/bin/
+		rm -rf $(OBJECTS)
+		mkdir -p $(OUTPUT)/dumps/default
+		mkdir -p $(OUTPUT)/data
+		mkdir -p $(OUTPUT)/pages
+		cp -r example/* $(OUTPUT)/data/
+		cp run.sh $(OUTPUT)/
 
 debug: LEX_DEBUG = -d
 debug: YACC_DEBUG = -r all
@@ -67,6 +77,7 @@ install: $(TARGETS)
 clean:
 	rm -f $(OBJECTS) $(TARGETS) lex.yy.c sql_parser.c sql_parser.output sys_parser
 	rm -f *.o *.core
+	rm -rf $(OUTPUT)
 
 docker-start:
 	@docker run \
