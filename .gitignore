@@ -8,8 +8,4 @@ sql_parser.c
 stream_parser
 test/
 output/
-*.frm/
-*.ibd/
-*.frm
-*.ibd
 tags
