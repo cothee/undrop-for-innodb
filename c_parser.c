@@ -583,7 +583,7 @@ int check_page(page_t *page, unsigned int *n_records) {
 		return 0;
 	}
 **/
-	if(brute_force == 1) {
+	if (brute_force == 1) {
 		if (debug) {
             printf("Scan from the first record(brute force), Consider all pages are not valid\n");
         }
@@ -918,6 +918,7 @@ void usage() {
    // "    -d  -- Process only those pages which potentially could have deleted records (default = NO)\n"
 	  "    -D  -- Recover deleted rows only (default = NO)\n"
 	  "    -U  -- Recover UNdeleted rows only (default = YES)\n"
+      "    -A  -- Recover All rows in brute force way (default = NO)\n"
   //  "    -V  -- Verbose mode (lots of debug information)\n"
   //  "    -4  -- innodb_datafile is in REDUNDANT format\n"
 //	  "    -5  -- innodb_datafile is in COMPACT format\n"
@@ -1006,6 +1007,7 @@ int main(int argc, char **argv) {
             case '6':
                 process_56 = 1;
                 break;
+            /*
             case 'T':
                 set_filter_id(optarg);
                 break;
@@ -1015,6 +1017,7 @@ int main(int argc, char **argv) {
 			case 'p':
 				strncpy(dump_prefix, optarg, sizeof(dump_prefix));
 				break;
+            **/    
 			default:
 			case '?':
 			case 'h':
