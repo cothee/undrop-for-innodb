@@ -587,7 +587,7 @@ int main(int argc, char **argv) {
         snprintf(dst_dir, sizeof(dst_dir), "pages-%s", basename(ibfile));
     }
     // Create pages directory
-    if (-1 == mkdir(dst_dir, 0755)) {
+    if (-1 == mkdir(dst_dir, 0755) && errno != EEXIST) {
         fprintf(stderr, "Could not create directory %s\n", dst_dir);
         perror("mkdir()");
         exit(EXIT_FAILURE);
@@ -612,7 +612,8 @@ int main(int argc, char **argv) {
         sem_init(index_mutex + i, 1, 1);
         sem_init(blob_mutex + i, 1, 1);
     }
-    int ncpu = sysconf(_SC_NPROCESSORS_CONF);
+    //int ncpu = sysconf(_SC_NPROCESSORS_CONF);
+    int ncpu = 1;
 #ifdef STREAM_PARSER_DEBUG
     DEBUG_LOG("Number of CPUs %d\n", ncpu);
 #endif
