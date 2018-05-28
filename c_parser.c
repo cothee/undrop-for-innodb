@@ -676,7 +676,7 @@ void process_ibpage(page_t *page) {
     unsigned int actual_records = 0;
     int16_t infimum, supremum, b = 1;
     int null_columns = 0;
-    int count_zero_b;
+    int count_zero_b = 0;
     unsigned int variable_length = 0, prefix_header_length = 0;
 
 	// Skip tables if filter used
@@ -713,7 +713,7 @@ void process_ibpage(page_t *page) {
      * if deleted_records_only, we scan the records from the PAGE_FREE pointer.
      * if you want to recover the last (or more) deleted records,
      * you must make sure that the you didn't insert anything after you have deleted
-     * something.
+     * something if you want to recover what you have deleted
      * */
 	if (is_page_valid && undeleted_records_only == 1) {
         b = mach_read_from_2(page + infimum - 2);
@@ -744,6 +744,15 @@ void process_ibpage(page_t *page) {
 	if (debug) {
         printf("Starting offset: %lu (%lX). Checking %d table definitions.\n", offset, offset, table_definitions_cnt);
     }
+
+    if (debug) {
+        printf("offset < UNIV_PAGE_SIZE - record_extra_bytes: %lu < %d - %d \n", offset,  UNIV_PAGE_SIZE,  record_extra_bytes);
+        printf("is_page_valid: %d\n", is_page_valid);
+        printf("b: %d\n", b);
+        printf("count_zero_b: %d\n", count_zero_b);
+        printf("supremum: %d\n", supremum);
+    }
+
 	// Walk through all possible positions to the end of page
 	// (start of directory - extra bytes of the last rec)
     //is_page_valid = 0;
@@ -899,7 +908,7 @@ void set_filter_id(char *id) {
 /*******************************************************************/
 void usage() {
 	error(
-	  "Usage: ./c_parser [-4|-5|-6] [-dDV] -f <InnoDB page or dir> -t table.sql [-T N:M] [-b <external pages directory>]\n"
+//	  "Usage: ./c_parser [dDA] -f <InnoDB page or dir> -t table.sql\n"
 	  "  Where\n"
 	  "    -f <InnoDB page(s)> -- InnoDB page or directory with pages(all pages should have same index_id)\n"
 	  "    -t <table.sql> -- CREATE statement of a table\n"
@@ -911,7 +920,7 @@ void usage() {
 	  "    -U  -- Recover UNdeleted rows only (default = YES)\n"
   //  "    -V  -- Verbose mode (lots of debug information)\n"
   //  "    -4  -- innodb_datafile is in REDUNDANT format\n"
-	  "    -5  -- innodb_datafile is in COMPACT format\n"
+//	  "    -5  -- innodb_datafile is in COMPACT format\n"
   //  "    -6  -- innodb_datafile is in MySQL 5.6 format\n"
   //  "    c_parser can detect REDUNDANT or COMPACT, so -4 and -5 are optional. If you use MySQL 5.6+ however, -6 is necessary\n"
   //  "    -T  -- retrieves only pages with index id = NM (N - high word, M - low word of id)\n"
