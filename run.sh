@@ -28,7 +28,7 @@ primary_file ${pages_dir}/pages_${table_name}.ibd/FIL_PAGE_INDEX
 ##brute force mode
 
 ./bin/c_parser -Uf ${primary_index}  \
- -t ${table_name}.sql \
+ -t ./${data_dir}/${table_name}.sql \
 1>dumps/default/${table_name} \
 2>dumps/default/${table_name}_load.sql
 
