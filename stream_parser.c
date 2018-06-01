@@ -26,13 +26,13 @@
 
 // Global flags from getopt
 #ifdef STREAM_PARSER_DEBUG
-int debug = 1;
+int debug_s = 1;
 #else
-int debug = 0;
+int debug_s = 0;
 #endif
 
 uint64_t filter_id;
-int use_filter_id = 0;
+int use_filter_id_s = 0;
 
 ssize_t cache_size = 8*1024*1024; // 8M
 off64_t ib_size = 0;
@@ -43,11 +43,11 @@ int worker = 0;
 sem_t index_mutex[mutext_pool_size];
 sem_t blob_mutex[mutext_pool_size];
 
-void usage(char*);
+void usage_s(char*);
 
 #ifdef STREAM_PARSER_DEBUG
 int DEBUG_LOG(char* format, ...) {
-    if (debug) {
+    if (debug_s) {
         char msg[1024] = "";
         //sprintf(format, "Worker(%d): %s\n", worker, fmt);
         va_list args;
@@ -60,7 +60,7 @@ int DEBUG_LOG(char* format, ...) {
 }
 #endif
 
-void error(char *msg) {
+void error_s(char *msg) {
     fprintf(stderr, "Error: %s\n", msg);
     exit(EXIT_FAILURE);
 }
@@ -110,7 +110,7 @@ valid_innodb_checksum_exit:
     return result;
 }
 
-inline int valid_blob_page(page_t* page) {
+inline int valid_blob_page_s(page_t* page) {
     uint16_t page_type = mach_read_from_2(page + FIL_PAGE_TYPE);
     if (page_type != FIL_PAGE_TYPE_BLOB) {
 #ifdef STREAM_PARSER_DEBUG
@@ -308,7 +308,7 @@ void show_progress(off64_t offset, off64_t length) {
     return;
 }
 
-inline void process_ibpage(page_t* page) {
+inline void process_ibpage_s(page_t* page) {
     uint32_t page_id = mach_read_from_4(page + FIL_PAGE_OFFSET);
     uint64_t index_id = mach_read_from_8(page + PAGE_HEADER + PAGE_INDEX_ID);
     uint16_t page_type = mach_read_from_2(page + FIL_PAGE_TYPE);
@@ -331,7 +331,7 @@ inline void process_ibpage(page_t* page) {
     //        : sem_wait(blob_mutex + (page_id % mutext_pool_size));
     fn = open(file_name, flags, 0644);
     if (!fn) {
-        error("Can't open file to save page!");
+        error_s("Can't open file to save page!");
     }
     if (-1 == write(fn, page, UNIV_PAGE_SIZE)) {
         fprintf(stderr, "Can't write a page on disk: %s\n", strerror(errno));
@@ -343,7 +343,7 @@ inline void process_ibpage(page_t* page) {
     //        : sem_post(blob_mutex + (page_id % mutext_pool_size));
     return;
 }
-void process_ibfile(int fn, off64_t start_offset, ssize_t length) {
+void process_ibfile_s(int fn, off64_t start_offset, ssize_t length) {
     page_t *cache = NULL;
     cache = malloc(cache_size);
     ssize_t disk_read;
@@ -354,12 +354,12 @@ void process_ibfile(int fn, off64_t start_offset, ssize_t length) {
     if (!cache) {
         char tmp[20];
         fprintf(stderr, "Can't allocate memory (%s) for disk cache\n", h_size(cache_size, tmp));
-        error("Disk cache allocation failed");
+        error_s("Disk cache allocation failed");
     }
     if (cache_size > SSIZE_MAX) {
         char tmp[20];
         fprintf(stderr, "Cache can't be bigger than %lu bytes(%s)\n", SSIZE_MAX, h_size(cache_size, tmp));
-        error("Disk cache size is too big");
+        error_s("Disk cache size is too big");
     }
     // Init cache offset pointer
     ssize_t curr_cache_offset = 0;
@@ -397,9 +397,9 @@ void process_ibfile(int fn, off64_t start_offset, ssize_t length) {
 #ifdef CentOS5
                 || valid_innodb_checksum(cache + curr_cache_offset)
 #endif
-                || valid_blob_page(cache + curr_cache_offset)
+                || valid_blob_page_s(cache + curr_cache_offset)
                 || valid_innodb_page(cache + curr_cache_offset, bytes_in_cache - curr_cache_offset, &cache_step)) {
-                process_ibpage(cache + curr_cache_offset);
+                process_ibpage_s(cache + curr_cache_offset);
                 cache_step = UNIV_PAGE_SIZE;
             }
 #ifdef STREAM_PARSER_DEBUG
@@ -419,7 +419,7 @@ void process_ibfile(int fn, off64_t start_offset, ssize_t length) {
             if (!tmp_cache) {
                 char tmp[20];
                 fprintf(stderr, "Can't allocate memory (%s) for temporary cache\n", h_size(cache_size, tmp));
-                error("Disk cache allocation failed");
+                error_s("Disk cache allocation failed");
             }
             memcpy(tmp_cache, cache + curr_cache_offset, bytes_in_cache - curr_cache_offset);
             memcpy(cache, tmp_cache, bytes_in_cache - curr_cache_offset);
@@ -443,18 +443,19 @@ void process_ibfile(int fn, off64_t start_offset, ssize_t length) {
     return;
 }
 
-int open_ibfile(char *fname) {
+int open_ibfile_s(char *fname) {
     struct stat st;
     int fn;
     char buf[255];
 
-    fprintf(stderr, "Opening file: %s\n", fname);
-    fprintf(stderr, "File information:\n\n");
+    //fprintf(stderr, "Opening file: %s\n", fname);
+    //fprintf(stderr, "File information:\n\n");
 
     if(stat(fname, &st) != 0) {
         printf("Errno = %d, Error = %s\n", errno, strerror(errno));
         exit(EXIT_FAILURE);
     }
+    /**
     fprintf(stderr, "ID of device containing file: %12ju\n", st.st_dev);
     fprintf(stderr, "inode number:                 %12ju\n", st.st_ino);
     fprintf(stderr, "protection:                   %12o ", st.st_mode);
@@ -479,7 +480,8 @@ int open_ibfile(char *fname) {
     fprintf(stderr, "time of last status change:   %12lu %s", st.st_ctime, ctime(&(st.st_ctime)));
     h_size(st.st_size, buf);
     fprintf(stderr, "total size, in bytes:         %12jd (%s)\n\n", (intmax_t)st.st_size, buf);
-
+    */
+    h_size(st.st_size, buf);
     fn = open(fname, O_RDONLY, O_LARGEFILE);
     posix_fadvise(fn, 0, 0, POSIX_FADV_SEQUENTIAL);
     if (fn == -1) {
@@ -495,12 +497,12 @@ int open_ibfile(char *fname) {
         fprintf(stderr, "Can't determine size of %s. Specify it manually with -t option\n", fname);
         exit(EXIT_FAILURE);
     }
-    fprintf(stderr, "Size to process:              %12lu (%s)\n", ib_size, h_size(ib_size, buf));
+    //fprintf(stderr, "Size to process:              %12lu (%s)\n", ib_size, h_size(ib_size, buf));
     max_page_id = ib_size / UNIV_PAGE_SIZE;
     return fn;
 }
 
-void usage(char* cmd) {
+void usage_s(char* cmd) {
     fprintf(stderr,
         "Usage: %s -f <innodb_datafile> [-T N:M] [-s size] [-t size] [-V|-g]\n"
         "  Where:\n"
@@ -534,57 +536,30 @@ uint64_t get_factor(char suffix) {
     return factor;
 }
 /*******************************************************************/
-int main(int argc, char **argv) {
+int stream_parser(const char* ibfile_arg, const char* dst_arg) {
     int fn = 0, ch;
     float m;
     char suffix;
     char buf[255];
     char ibfile[1024] = "";
+    char cmd[2]="0";
 
-    while ((ch = getopt(argc, argv, "gVhf:T:s:t:d:")) != -1) {
-        switch (ch) {
-            case 'f':
-                strncpy(ibfile, optarg, sizeof(ibfile));
-                break;
-            case 'd':
-                strncpy(dst_dir, optarg, sizeof(dst_dir));
-                break;
-            case 'V':
-            case 'g':
-                debug = 1;
-                break;
-            case 's':
-                sscanf(optarg, "%f%c", &m, &suffix);
-                cache_size = m * get_factor(suffix);
-                if(cache_size < UNIV_PAGE_SIZE) {
-                    fprintf(stderr, "Disk cache size %lu can't be less than %u\n", cache_size, UNIV_PAGE_SIZE);
-                    usage(argv[0]);
-                    exit(EXIT_FAILURE);
-                }
-                //cache_size = (cache_size / UNIV_PAGE_SIZE ) * UNIV_PAGE_SIZE;
-                fprintf(stderr, "Disk cache:                   %12lu (%s)\n\n", cache_size, h_size(cache_size, buf));
-                break;
-            case 't':
-                sscanf(optarg, "%f%c", &m, &suffix);
-                ib_size = m * get_factor(suffix);
-                break;
-            case 'T':
-                filter_id = strtoull(optarg, NULL, 10);
-                break;
-            default:
-            case '?':
-            case 'h':
-                usage(argv[0]);
-                exit(EXIT_SUCCESS);
-            }
+    if (ibfile_arg) {
+        strncpy(ibfile, ibfile_arg, sizeof(ibfile));
     }
+
+    if (dst_arg) {
+        strncpy(dst_dir, dst_arg, sizeof(dst_dir));
+    }
+
     if (strlen(ibfile) == 0) {
-        fprintf(stderr, "You must specify file with -f option\n");
-        usage(argv[0]);
+        fprintf(stderr, "stream_parser: You must specify ibfile\n");
+        //usage_s(cmd);
         exit(EXIT_FAILURE);
     }
     if (strlen(dst_dir) == 0) {
-        snprintf(dst_dir, sizeof(dst_dir), "pages-%s", basename(ibfile));
+        fprintf(stderr, "stream_parser: You must specify output page dir\n");
+        //snprintf(dst_dir, sizeof(dst_dir), "pages-%s", basename(ibfile));
     }
     // Create pages directory
     if (-1 == mkdir(dst_dir, 0755) && errno != EEXIST) {
@@ -622,7 +597,7 @@ int main(int argc, char **argv) {
     if (!pids) {
         char tmp[20];
         fprintf(stderr, "Can't allocate memory (%s) for pid cache\n", h_size(sizeof(pid_t)*ncpu, tmp));
-        error("PID cache allocation failed");
+        error_s("PID cache allocation failed");
     }
     //ncpu = 1;
     time_t a,b;
@@ -631,10 +606,10 @@ int main(int argc, char **argv) {
         pid_t pid = fork();
         //pid_t pid = 0;
         if (pid == 0) {
-            fn = open_ibfile(ibfile);
+            fn = open_ibfile_s(ibfile);
             if (fn == 0) {
                 fprintf(stderr, "Can not open file %s\n", ibfile);
-                usage(argv[0]);
+                usage_s(cmd);
                 exit(EXIT_FAILURE);
             }
             // child
@@ -644,7 +619,7 @@ int main(int argc, char **argv) {
             DEBUG_LOG("I'm child(%d): %u.", n, getpid());
             DEBUG_LOG("Processing from %lu bytes starting from %lu", ib_size/ncpu, n*ib_size/ncpu);
 #endif
-            process_ibfile(fn, n*ib_size/ncpu, ib_size/ncpu);
+            process_ibfile_s(fn, n*ib_size/ncpu, ib_size/ncpu);
             exit(EXIT_SUCCESS);
         }
         else {
@@ -661,6 +636,7 @@ int main(int argc, char **argv) {
         sem_destroy(blob_mutex + i);
     }
     time(&b);
-    printf("All workers finished in %lu sec\n", b - a);
-    exit(EXIT_SUCCESS);
+    //printf("All workers finished in %lu sec\n", b - a);
+    return 0;
+    //exit(EXIT_SUCCESS);
 }

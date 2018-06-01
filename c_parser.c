@@ -71,6 +71,8 @@
 #define DIG_MAX      (DIG_BASE-1)
 
 #define DIG_BASE     1000000000
+#define FILES_IN_DIR  1024
+
 
 // Global flags from getopt
 bool deleted_pages_only = 0;
@@ -910,11 +912,13 @@ void usage() {
 	error(
 //	  "Usage: ./c_parser [dDA] -f <InnoDB page or dir> -t table.sql\n"
 	  "  Where\n"
-	  "    -f <InnoDB page(s)> -- InnoDB page or directory with pages(all pages should have same index_id)\n"
-	  "    -t <table.sql> -- CREATE statement of a table\n"
-	  "    -o <file> -- Save dump in this file. Otherwise print to stdout\n"
-	  "    -l <file> -- Save SQL statements in this file. Otherwise print to stderr\n"
+	//  "    -f <InnoDB page(s)> -- InnoDB page or directory with pages(all pages should have same index_id)\n"
+	  "    -i <table ibdfiles directory> \n"
+      "    -t <table.sql directory> -- CREATE statement of a table\n"
+	  "    -o <output directory> -- Save dump in this directory. Otherwise print to stdout\n"
+	  "    -l <output directory> -- Save  pages in this folder\n"
 	  "    -h  -- Print this help\n"
+      "    -c  -- whether delete page files or not after the recovery\n" 
    // "    -d  -- Process only those pages which potentially could have deleted records (default = NO)\n"
 	  "    -D  -- Recover deleted rows only (default = NO)\n"
 	  "    -U  -- Recover UNdeleted rows only (default = YES)\n"
@@ -932,25 +936,38 @@ void usage() {
 	);
 }
 
+extern int get_primary_page(char*, char*);
+extern int dirlist(char* in, char* arg1[], char* arg2[]);
+extern int stream_parser(char*, char*);
+extern int rm_dir(char* page_dir);
 /*******************************************************************/
 int main(int argc, char **argv) {
-	int fn = 0, ch;
-	int is_dir = 0;
+	int fn = 0, ch, no = 0, num_of_ibfs = 0, i = 0;
+	int delete = 1; // if delete pages
 	struct stat st;
-	char src[256] = "";
+	char src[350] = "";
+    char tmp[256] = "";
+    char ibfile_arg[256]= "";
+    char page_arg[256] = "";
 	char table_schema[256] = "";
+    char result_file_dir[256] = "";
 
-	char buffer[BUFSIZ];
-        setvbuf(stdout, buffer, _IOFBF, sizeof(buffer));
+    char* ibfiles[FILES_IN_DIR];
+    char* tablenames[FILES_IN_DIR];
+	char* primary_page[FILES_IN_DIR];
+    char buffer[BUFSIZ];
+    
+
+    setvbuf(stdout, buffer, _IOFBF, sizeof(buffer));
 
 	f_result = stdout;
 	f_sql = stderr;
 	char result_file[1024];
 	char sql_file[1024];
-	while ((ch = getopt(argc, argv, "t:456hdADUVf:T:b:p:o:i:l:")) != -1) {
+	while ((ch = getopt(argc, argv, "t:456hdADUVcT:b:p:o:i:l:")) != -1) {
 		switch (ch) {
 			case 'd':
-				deleted_pages_only = 1;
+				//deleted_pages_only = 1;
 				break;
 			case 'D':
 			    deleted_records_only = 1;
@@ -966,27 +983,32 @@ int main(int argc, char **argv) {
                 brute_force = 1;
                 break;
 			case 'o':
-				strncpy(result_file, optarg, sizeof(result_file));
-				if(NULL == (f_result = fopen(result_file, "w"))){
-					fprintf(stderr, "Can't open file %s for writing\n", result_file);
-					exit(-1);
-				}
+				strncpy(result_file_dir, optarg, sizeof(result_file_dir));
 				break;
 			case 'i':
-				strncpy(path_ibdata, optarg, sizeof(path_ibdata));
-                external_in_ibdata = 1;
+                strncpy(ibfile_arg, optarg, sizeof(ibfile_arg));
+				//strncpy(path_ibdata, optarg, sizeof(path_ibdata));
+                //external_in_ibdata = 1;
 				break;
             case 'l':
-                strncpy(sql_file, optarg, sizeof(sql_file));
+			    strncpy(page_arg, optarg, sizeof(page_arg));
+                /*
+                strncpy(sql_file_dir, optarg, sizeof(sql_file));
                 if(NULL == (f_sql = fopen(sql_file, "w"))){
                     fprintf(stderr, "Can't open file %s for writing\n", sql_file);
                     exit(-1);
                 }
+                */
+                break;
+
+            case 'c':
+                delete = 0;
                 break;
 			case 't':
 			    strncpy(table_schema, optarg, sizeof(table_schema));
 				break;
 			case 'f':
+                /*
 				strncpy(src, optarg, sizeof(src));
 				if(stat(src, &st) == 0){
 					if(S_ISDIR(st.st_mode)){
@@ -997,6 +1019,7 @@ int main(int argc, char **argv) {
 					fprintf(stderr, "Can't stat %s\n", src);
 					exit(-1);
 				}
+                */
 				break;
 			case 'V':
 				debug = 1;
@@ -1024,112 +1047,192 @@ int main(int argc, char **argv) {
 				usage();
 		}
 	}
-    if(src[0] == 0){
-        usage();
+    /*
+    printf("-----your create_sql dir: %s\n", table_schema);
+    printf("-----your pages dir: %s\n", page_arg);
+    printf("-----your output dir: %s\n", result_file_dir);
+    printf("-----your idbfile dir: %s\n", ibfile_arg);
+    */
+    for (i = 0; i < FILES_IN_DIR; i++) {
+        ibfiles[i] = (char*)malloc(sizeof(char) * 256);
+        tablenames[i] = (char*)malloc(sizeof(char) * 64);
+        primary_page[i] = (char*)malloc(sizeof(char) * 350);
+        memset(ibfiles[i], '\0', 256);
+        memset(tablenames[i], '\0', 64);
+        memset(primary_page[i], '\0', 350);
     }
 
-    if(load_table(table_schema) != 0) {
-        fprintf(stderr, "Failed to parse table structure\n");
-        usage();
-        exit(EXIT_FAILURE);
-    }
-
-	if (is_dir) {
-		DIR *src_dir;
-		char src_file[256];
-		struct dirent *de;
-		src_dir = opendir(src);
-		while (NULL != (de = readdir(src_dir))) {
-			if(!strncmp(de->d_name, ".", sizeof(de->d_name))) continue;
-			if(!strncmp(de->d_name, "..", sizeof(de->d_name))) continue;
-            snprintf(src_file, sizeof(src_file), "%s/%s", src, de->d_name);
-			if(debug) {
-                fprintf(stderr, "Processing %s\n", src_file);
+    if (stat(ibfile_arg, &st) == 0) {
+        if (S_ISDIR(st.st_mode)) {
+            num_of_ibfs = dirlist(ibfile_arg, ibfiles, tablenames);
+            for (no = 0; no < num_of_ibfs; no++) {
+                memset(tmp, '\0', sizeof(tmp));
+                strcat(tmp, page_arg);
+                strcat(tmp, "/pages-");
+                strcat(tmp, tablenames[no]);
+                stream_parser(ibfiles[no], tmp);
+                strcat(tmp, "/FIL_PAGE_INDEX");
+                get_primary_page(tmp, primary_page[no]);
             }
-			if(0 == (fn = open_ibfile(src_file))){
-				fprintf(stderr, "Can't open %s\n", src_file);
-				perror("open_ibfile");
-				exit(-1);
-			}
-			process_ibfile(fn);
-			close(fn);
-		}
 
-		closedir(src_dir);
-	} else {
-		if(0 == (fn = open_ibfile(src))) {
+        } else {
+            printf("please provide a directory with ibd files\n");
+            exit(-1);
+            num_of_ibfs = 1;
+            strcpy(ibfiles[0], ibfile_arg);
+            //here read the tablenames[0]
+            memset(tmp, '\0', sizeof(tmp));
+            strcpy(tmp, page_arg);
+            strcat(tmp, "/pages-");
+            strcat(tmp, tablenames[0]);
+            stream_parser(ibfile_arg, tmp);
+            strcat(tmp, "/FIL_PAGE_INDEX");
+            get_primary_page(tmp, primary_page[0]);
+        }
+    } else {
+		perror("stat");
+		printf( "Can't stat ibfile_arg %s\n", ibfile_arg);
+		exit(-1);
+    }
+    //stream_parser process over;
+	printf( "!!!!!!!!!process ibd files over!!!!!!!\n");
+    /*
+    for (i = 0; i < num_of_ibfs; i++) {
+        printf("%d:  %s**%s**%s\n", i+1, ibfiles[i], tablenames[i], primary_page[i]);
+    }
+    */
+    //exit(0);
+
+    for (no = 0; no < num_of_ibfs; no++) {
+        char page_dir[256] = "";
+        char table_temp[256] = "";
+        strcpy(page_dir, page_arg);
+        strcat(page_dir, "/pages-");
+        strcat(page_dir, tablenames[no]);  // just for delete later
+        
+        strncpy(table_temp, table_schema, sizeof(table_temp));
+        strcat(table_temp, "/");
+        strcat(table_temp, tablenames[no]);
+        strcat(table_temp, ".sql");
+        memset(src, '\0', sizeof(src));
+        strncpy(src, primary_page[no], strlen(primary_page[no]));
+
+        printf("process table structure for: %s : %s\n", table_temp, tablenames[no]);
+
+        if (load_table(table_temp) != 0) {
+            printf("Failed to parse table structure\n");
+            usage();
+            exit(EXIT_FAILURE);
+        }
+    
+		if (0 == (fn = open_ibfile(src))) {
 			fprintf(stderr, "Can't open %s\n", src);
 			perror("open_ibfile");
 			exit(-1);
 		}
+
+        memset(result_file, '\0', sizeof(result_file));
+        strcpy(result_file, result_file_dir);
+        strcat(result_file, "/");
+        strcat(result_file, tablenames[no]);
+          
+		if(NULL == (f_result = fopen(result_file, "w"))){
+			fprintf(stderr, "Can't open file %s for writing\n", result_file);
+			exit(-1);
+		}
+
 		process_ibfile(fn);
 		close(fn);
-	}
-	table_def_t *table = &(table_definitions[0]);
-	fprintf(f_sql, "SET FOREIGN_KEY_CHECKS=0;\n");
-	fprintf(f_sql, "LOAD DATA LOCAL INFILE '");
-	if (f_result == stdout) {
-		fprintf(f_sql, "%s/dumps/%s/%s", getenv("PWD"), dump_prefix, table->name);
-	} else {
-		fprintf(f_sql, "%s", result_file);
-	}
-	fprintf(f_sql, "' REPLACE INTO TABLE `%s` FIELDS TERMINATED BY '\\t' OPTIONALLY ENCLOSED BY '\"' LINES STARTING BY '%s\\t' ", table->name, table->name);
-	int i = 0;
-	int comma = 0;
-	int has_set = 0;
-	fprintf(f_sql, "(");
-	for(i = 0; i < table->fields_count; i++) {
-		if(table->fields[i].type == FT_INTERNAL) {
-            continue;
-        }
-		if(comma) {
-            fprintf(f_sql, ", ");
-        }
-		switch (table->fields[i].type) {
-			case FT_BLOB:
-			case FT_BIN:
-				fprintf(f_sql, "@var_%s", table->fields[i].name);
-				has_set = 1;
-				break;
-			case FT_BIT:
-				fprintf(f_sql, "@var_%s", table->fields[i].name);
-				has_set = 1;
-				break;
-			default:
-				fprintf(f_sql, "`%s`", table->fields[i].name);
-		}
-		comma = 1;
-	}
-	fprintf(f_sql, ")");
-	comma = 0;
-	if (has_set) {
-		fprintf(f_sql, "\nSET\n");
-		for(i = 0; i < table->fields_count; i++) {
-			if(table->fields[i].type == FT_INTERNAL) continue;
-			switch(table->fields[i].type){
-				case FT_BLOB:
-				case FT_BIN:
-					if(comma) {
-                        fprintf(f_sql, ",\n");
-                    }
-					fprintf(f_sql, "    %s = UNHEX(@var_%s)", table->fields[i].name, table->fields[i].name);
-					comma = 1;
-					break;
-				case FT_BIT:
-					if(comma) {
-                        fprintf(f_sql, ",\n");
-                    }
-					fprintf(f_sql, "    %s = CAST(@var_%s AS UNSIGNED)", table->fields[i].name, table->fields[i].name);
-					comma = 1;
-					break;
-				default: break;
-			}
-		}
-	}
+        
+        memset(sql_file, '\0', sizeof(sql_file));
+        strcpy(sql_file, result_file_dir);
+        strcat(sql_file, "/load_");
+        strcat(sql_file, tablenames[no]);
+        strcat(sql_file, ".sql");
 
-    fprintf(f_sql, ";\n");
-	fprintf(f_sql, "-- STATUS {\"records_expected\": %lu, \"records_dumped\": %lu, \"records_lost\": %s} STATUS END\n",
-	records_expected_total, records_dumped_total, records_lost ? "true": "false");
+        if(NULL == (f_sql = fopen(sql_file, "w"))){
+            fprintf(stderr, "Can't open file %s for writing\n", sql_file);
+            exit(-1);
+        }
 
-	return 0;
+	    table_def_t *table = &(table_definitions[0]);
+	    fprintf(f_sql, "SET FOREIGN_KEY_CHECKS=0;\n");
+	    fprintf(f_sql, "LOAD DATA LOCAL INFILE '");
+	    if (f_result == stdout) {
+		    fprintf(f_sql, "%s/dumps/%s/%s", getenv("PWD"), dump_prefix, table->name);
+	    } else {
+		    fprintf(f_sql, "%s", result_file);
+	    }
+	    fprintf(f_sql, "' REPLACE INTO TABLE `%s` FIELDS TERMINATED BY '\\t' OPTIONALLY ENCLOSED BY '\"' LINES STARTING BY '%s\\t' ", table->name, table->name);
+	    int i = 0;
+	    int comma = 0;
+	    int has_set = 0;
+	    fprintf(f_sql, "(");
+	    for(i = 0; i < table->fields_count; i++) {
+		    if(table->fields[i].type == FT_INTERNAL) {
+              continue;
+            }
+		    if(comma) {
+                fprintf(f_sql, ", ");
+            }
+		  switch (table->fields[i].type) {
+			    case FT_BLOB:
+			    case FT_BIN:
+				    fprintf(f_sql, "@var_%s", table->fields[i].name);
+				    has_set = 1;
+				    break;
+			    case FT_BIT:
+				    fprintf(f_sql, "@var_%s", table->fields[i].name);
+				    has_set = 1;
+				    break;
+			    default:
+				    fprintf(f_sql, "`%s`", table->fields[i].name);
+		  }
+		  comma = 1;
+	    }
+	    fprintf(f_sql, ")");
+	    comma = 0;
+	    if (has_set) {
+		    fprintf(f_sql, "\nSET\n");
+		    for(i = 0; i < table->fields_count; i++) {
+			    if(table->fields[i].type == FT_INTERNAL) continue;
+			    switch(table->fields[i].type){
+				    case FT_BLOB:
+				    case FT_BIN:
+					    if(comma) {
+                            fprintf(f_sql, ",\n");
+                        }
+					    fprintf(f_sql, "    %s = UNHEX(@var_%s)", table->fields[i].name, table->fields[i].name);
+					    comma = 1;
+					    break;
+				    case FT_BIT:
+					    if(comma) {
+                            fprintf(f_sql, ",\n");
+                        }
+					    fprintf(f_sql, "    %s = CAST(@var_%s AS UNSIGNED)", table->fields[i].name, table->fields[i].name);
+					    comma = 1;
+					    break;
+				    default: break;
+			    }
+		    }
+	    }
+
+        fprintf(f_sql, ";\n");
+	    fprintf(f_sql, "-- STATUS {\"records_expected\": %lu, \"records_dumped\": %lu, \"records_lost\": %s} STATUS END\n",
+	    records_expected_total, records_dumped_total, records_lost ? "true": "false");
+        if (delete == 1 && rm_dir(page_dir) == 0) {
+          printf("delete the page files in %s\n", page_dir);
+        }
+    }
+
+  for (i = 0; i < FILES_IN_DIR; i++) {
+      free(ibfiles[i]);
+      free(tablenames[i]);
+      free(primary_page[i]);
+      //memset(ibfiles[i], '\0', 256);
+      //memset(tablenames[i], '\0', 256);
+      //memset(primary_page[i], '\0', 350);
+  }
+  
+  return 0;
 }
