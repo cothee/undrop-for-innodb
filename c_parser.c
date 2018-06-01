@@ -1047,6 +1047,14 @@ int main(int argc, char **argv) {
 				usage();
 		}
 	}
+
+    if (strlen(table_schema) == 0
+        || strlen(page_arg) == 0
+        || strlen(result_file_dir) == 0
+        || strlen(ibfile_arg) == 0) {
+      usage();
+    }
+
     /*
     printf("-----your create_sql dir: %s\n", table_schema);
     printf("-----your pages dir: %s\n", page_arg);
